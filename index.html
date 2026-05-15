@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>杰杰的工具箱 - 榜单生成</title>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+  }
+  .toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+    padding: 10px 20px; display: flex; align-items: center;
+    gap: 10px; flex-wrap: wrap; box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  .toolbar-group { display: flex; align-items: center; gap: 6px; }
+  .toolbar label { font-size: 13px; color: #555; font-weight: 500; white-space: nowrap; }
+  .toolbar select, .toolbar input[type="number"], .toolbar input[type="text"], .toolbar textarea {
+    padding: 5px 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 13px; outline: none;
+  }
+  .toolbar input[type="range"] { width: 80px; }
+  .toolbar textarea {
+    width: 140px; height: 32px; resize: none; font-family: inherit;
+    line-height: 1.4; overflow: hidden; transition: height 0.2s;
+  }
+  .toolbar textarea:focus { height: 80px; overflow: auto; }
+  .toolbar button {
+    padding: 6px 16px; border: none; border-radius: 6px;
+    font-size: 13px; cursor: pointer; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: #ff6b6b; color: #fff; }
+  .btn-primary:hover { background: #ff5252; }
+  .btn-secondary { background: #f0f0f0; color: #333; }
+  .btn-secondary:hover { background: #e0e0e0; }
+
+  .main { padding: 80px 20px 40px; display: flex; justify-content: center; }
+  .canvas-wrapper {
+    position: relative; display: inline-block;
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    background: #000;
+  }
+  .canvas-wrapper img.bg {
+    display: block; max-width: 90vw; max-height: 78vh;
+    width: auto; height: auto;
+  }
+  .names-container {
+    position: absolute; top: 0; left: 0;
+    cursor: grab; user-select: none;
+    pointer-events: auto;
+  }
+  .names-container.dragging { cursor: grabbing; }
+  .names-grid {
+    display: grid;
+  }
+  .name-tag {
+    font-weight: 700; white-space: nowrap; text-align: center;
+    color: #000; font-family: inherit;
+    line-height: 1.6;
+  }
+  .title-overlay {
+    position: absolute; cursor: grab; user-select: none;
+    pointer-events: auto; z-index: 10;
+    color: #000; font-weight: 800; white-space: nowrap;
+    text-align: center; line-height: 1.4;
+  }
+  .title-overlay.dragging { cursor: grabbing; }
+  .hidden { display: none; }
+  .hint {
+    position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); color: #fff; padding: 6px 16px;
+    border-radius: 20px; font-size: 12px; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-group">
+    <label>背景图</label>
+    <select id="bgSelect">
+      <option value="企业微信截图_17788327206823.png">已续报名单</option>
+      <option value="企业微信截图_17788330421180.png">首日礼·锦鲤榜</option>
+      <option value="企业微信截图_17788330558036.png">截止礼·锦鲤榜</option>
+      <option value="企业微信截图_17788330776034.png">早享礼·锦鲤榜</option>
+      <option value="custom">自定义...</option>
+    </select>
+    <input type="file" id="customBg" accept="image/*" class="hidden">
+  </div>
+
+  <div class="toolbar-group">
+    <label>CSV名单</label>
+    <input type="file" id="csvFile" accept=".csv">
+  </div>
+
+  <div class="toolbar-group">
+    <label>字号</label>
+    <input type="range" id="fontSize" min="12" max="40" value="20">
+    <span id="fontSizeVal" style="font-size:12px;color:#888;width:20px;">20</span>
+  </div>
+
+  <div class="toolbar-group">
+    <label>列数</label>
+    <input type="number" id="cols" value="4" min="1" max="8" style="width:50px;">
+  </div>
+
+  <div class="toolbar-group">
+    <span id="nameCount" style="font-size:12px;color:#888;">20人</span>
+  </div>
+
+  <div class="toolbar-group">
+    <label>标题</label>
+    <input type="text" id="titleInput" value="续报光荣榜" style="width:110px;">
+  </div>
+
+  <div class="toolbar-group">
+    <label>标题字号</label>
+    <input type="range" id="titleSize" min="16" max="60" value="32">
+    <span id="titleSizeVal" style="font-size:12px;color:#888;width:24px;">32</span>
+  </div>
+
+  <div class="toolbar-group">
+    <label>旋转</label>
+    <input type="range" id="titleRotate" min="-180" max="180" value="0">
+    <span id="titleRotateVal" style="font-size:12px;color:#888;width:24px;">0°</span>
+  </div>
+
+  <div class="toolbar-group">
+    <label>粘贴名单</label>
+    <textarea id="pasteArea" placeholder="每行一个名字&#10;直接粘贴即可"></textarea>
+  </div>
+
+  <div class="toolbar-group" style="margin-left:auto;">
+    <button class="btn-secondary" onclick="resetLayout()">重置位置</button>
+    <button class="btn-primary" onclick="exportImage()">导出PNG</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="canvas-wrapper" id="canvasWrapper">
+    <img class="bg" id="bgImage" src="" alt="背景图">
+    <div class="title-overlay" id="titleOverlay">续报光荣榜</div>
+    <div class="names-container" id="namesContainer">
+      <div class="names-grid" id="namesGrid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="hint">提示：拖动姓名区域整体移动 | 标题可独立拖动</div>
+
+<script>
+const defaultNames = [
+  "Benz骏骏", "Gloria 和宝", "Peter帅帅", "Yuki",
+  "兜兜 Ian", "安安Andy", "朗朗Dylan", "朱韵雅",
+  "杨佑辰", "沈艺昕", "王云跃", "王梦瑶",
+  "王睿坤", "稳稳", "羽希Joy", "胡心唯",
+  "蔡沐枫", "蛋仔", "许愿", "高浩朗"
+];
+
+let names = [...defaultNames];
+let isDragging = false;
+let dragTarget = null; // 'names' or 'title'
+let dragStartX = 0, dragStartY = 0;
+let containerStartX = 0, containerStartY = 0;
+
+const bgSelect = document.getElementById('bgSelect');
+const bgImage = document.getElementById('bgImage');
+const namesContainer = document.getElementById('namesContainer');
+const namesGrid = document.getElementById('namesGrid');
+const csvFile = document.getElementById('csvFile');
+const fontSizeInput = document.getElementById('fontSize');
+const fontSizeVal = document.getElementById('fontSizeVal');
+const colsInput = document.getElementById('cols');
+const customBg = document.getElementById('customBg');
+const nameCount = document.getElementById('nameCount');
+const pasteArea = document.getElementById('pasteArea');
+const titleOverlay = document.getElementById('titleOverlay');
+const titleInput = document.getElementById('titleInput');
+const titleSize = document.getElementById('titleSize');
+const titleSizeVal = document.getElementById('titleSizeVal');
+const titleRotate = document.getElementById('titleRotate');
+const titleRotateVal = document.getElementById('titleRotateVal');
+
+// 标题控制
+titleInput.addEventListener('input', () => {
+  titleOverlay.textContent = titleInput.value || ' ';
+});
+titleSize.addEventListener('input', () => {
+  titleSizeVal.textContent = titleSize.value;
+  titleOverlay.style.fontSize = titleSize.value + 'px';
+});
+titleRotate.addEventListener('input', () => {
+  const deg = titleRotate.value;
+  titleRotateVal.textContent = deg + '°';
+  titleOverlay.style.transform = 'rotate(' + deg + 'deg)';
+});
+
+// 粘贴名单
+pasteArea.addEventListener('input', () => {
+  const text = pasteArea.value.trim();
+  if (!text) return;
+  const data = text.split(/\r?\n/).map(n => n.trim()).filter(n => n);
+  // 过滤表头
+  const filtered = data.filter(n => !['姓名','名字','name','Name','NAME'].includes(n));
+  if (filtered.length > 0) {
+    names = filtered;
+    renderNames();
+    setTimeout(resetLayout, 50);
+  }
+});
+
+// 背景图切换
+bgSelect.addEventListener('change', (e) => {
+  if (e.target.value === 'custom') {
+    customBg.click();
+  } else {
+    bgImage.src = e.target.value;
+  }
+});
+
+customBg.addEventListener('change', (e) => {
+  if (e.target.files[0]) {
+    bgImage.src = URL.createObjectURL(e.target.files[0]);
+  }
+});
+
+bgImage.addEventListener('load', () => {
+  setTimeout(resetLayout, 50);
+});
+
+bgImage.addEventListener('error', () => {
+  alert('背景图加载失败。请确保HTML文件与图片在同一文件夹，或选择"自定义"上传背景图。');
+});
+
+// CSV读取
+csvFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => { parseCSV(evt.target.result); };
+  reader.readAsText(file);
+});
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 1) return;
+  let startIdx = 0;
+  if (lines[0].includes('姓名') || lines[0].includes('名字') || lines[0].includes('name')) startIdx = 1;
+  const data = lines.slice(startIdx).map(line => line.split(',')[0].trim()).filter(n => n);
+  if (data.length > 0) {
+    names = data;
+    renderNames();
+    setTimeout(resetLayout, 50);
+  }
+}
+
+// 渲染姓名（grid布局）
+function renderNames() {
+  namesGrid.innerHTML = '';
+  names.forEach((name, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'name-tag';
+    tag.textContent = name;
+    tag.style.fontSize = fontSizeInput.value + 'px';
+    namesGrid.appendChild(tag);
+  });
+  nameCount.textContent = names.length + '人';
+}
+
+// 自动布局：设置grid列数 + 容器居中位置 + 标题居中
+function resetLayout() {
+  const cols = parseInt(colsInput.value) || 4;
+  namesGrid.style.gridTemplateColumns = 'repeat(' + cols + ', auto)';
+  namesGrid.style.gap = (parseInt(fontSizeInput.value) * 0.5) + 'px ' + (parseInt(fontSizeInput.value) * 0.8) + 'px';
+
+  const wrapper = document.getElementById('canvasWrapper');
+  const w = wrapper.offsetWidth;
+  const h = wrapper.offsetHeight;
+
+  requestAnimationFrame(() => {
+    // 标题居中偏上
+    titleOverlay.style.fontSize = titleSize.value + 'px';
+    titleOverlay.style.transform = 'rotate(' + titleRotate.value + 'deg)';
+    titleOverlay.style.left = (w - titleOverlay.offsetWidth) / 2 + 'px';
+    titleOverlay.style.top = h * 0.08 + 'px';
+
+    // 姓名居中偏下
+    const gw = namesGrid.offsetWidth;
+    const gh = namesGrid.offsetHeight;
+    namesContainer.style.left = (w - gw) / 2 + 'px';
+    namesContainer.style.top = h * 0.4 + 'px';
+  });
+}
+
+// 拖拽：标题（独立拖动）
+titleOverlay.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragTarget = 'title';
+  titleOverlay.classList.add('dragging');
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  containerStartX = parseInt(titleOverlay.style.left) || 0;
+  containerStartY = parseInt(titleOverlay.style.top) || 0;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+titleOverlay.addEventListener('touchstart', (e) => {
+  isDragging = true;
+  dragTarget = 'title';
+  titleOverlay.classList.add('dragging');
+  const touch = e.touches[0];
+  dragStartX = touch.clientX;
+  dragStartY = touch.clientY;
+  containerStartX = parseInt(titleOverlay.style.left) || 0;
+  containerStartY = parseInt(titleOverlay.style.top) || 0;
+  e.preventDefault();
+  e.stopPropagation();
+}, {passive: false});
+
+// 拖拽：姓名容器（整体移动）
+namesContainer.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragTarget = 'names';
+  namesContainer.classList.add('dragging');
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  containerStartX = parseInt(namesContainer.style.left) || 0;
+  containerStartY = parseInt(namesContainer.style.top) || 0;
+  e.preventDefault();
+});
+
+namesContainer.addEventListener('touchstart', (e) => {
+  isDragging = true;
+  dragTarget = 'names';
+  namesContainer.classList.add('dragging');
+  const touch = e.touches[0];
+  dragStartX = touch.clientX;
+  dragStartY = touch.clientY;
+  containerStartX = parseInt(namesContainer.style.left) || 0;
+  containerStartY = parseInt(namesContainer.style.top) || 0;
+  e.preventDefault();
+}, {passive: false});
+
+function moveDrag(clientX, clientY) {
+  if (!isDragging) return;
+  const wrapper = document.getElementById('canvasWrapper');
+  const w = wrapper.offsetWidth;
+  const h = wrapper.offsetHeight;
+  let x = containerStartX + (clientX - dragStartX);
+  let y = containerStartY + (clientY - dragStartY);
+
+  if (dragTarget === 'names') {
+    const gw = namesGrid.offsetWidth;
+    const gh = namesGrid.offsetHeight;
+    x = Math.max(-gw + 20, Math.min(x, w - 20));
+    y = Math.max(-gh + 20, Math.min(y, h - 20));
+    namesContainer.style.left = x + 'px';
+    namesContainer.style.top = y + 'px';
+  } else if (dragTarget === 'title') {
+    const tw = titleOverlay.offsetWidth;
+    const th = titleOverlay.offsetHeight;
+    x = Math.max(-tw + 20, Math.min(x, w - 20));
+    y = Math.max(-th + 20, Math.min(y, h - 20));
+    titleOverlay.style.left = x + 'px';
+    titleOverlay.style.top = y + 'px';
+  }
+}
+
+document.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+document.addEventListener('touchmove', (e) => {
+  if (isDragging) { moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
+}, {passive: false});
+
+function endDrag() {
+  if (dragTarget === 'title') titleOverlay.classList.remove('dragging');
+  else namesContainer.classList.remove('dragging');
+  isDragging = false;
+  dragTarget = null;
+}
+document.addEventListener('mouseup', endDrag);
+document.addEventListener('touchend', endDrag);
+
+// 字号调整
+fontSizeInput.addEventListener('input', (e) => {
+  fontSizeVal.textContent = e.target.value;
+  namesGrid.querySelectorAll('.name-tag').forEach(tag => {
+    tag.style.fontSize = e.target.value + 'px';
+  });
+  resetLayout();
+});
+
+// 列数调整
+colsInput.addEventListener('change', resetLayout);
+
+// 导出
+function exportImage() {
+  if (typeof html2canvas === 'undefined') {
+    alert('导出库未加载，请检查网络连接后刷新页面，或使用系统截图工具截取榜单。');
+    return;
+  }
+  const wrapper = document.getElementById('canvasWrapper');
+  html2canvas(wrapper, {
+    useCORS: true, allowTaint: true, scale: 2, backgroundColor: null
+  }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = '榜单_' + new Date().getTime() + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }).catch(err => {
+    alert('导出失败，请尝试用截图工具截取榜单区域。错误：' + err.message);
+  });
+}
+
+// 初始化
+bgImage.src = bgSelect.value;
+renderNames();
+if (bgImage.complete && bgImage.naturalWidth > 0) {
+  setTimeout(resetLayout, 100);
+}
+</script>
+</body>
+</html>
